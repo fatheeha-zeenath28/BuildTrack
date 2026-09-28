@@ -19,6 +19,10 @@ function Modal({ onClose, onSaved, users }) {
 
   const save = async e => {
     e.preventDefault();
+    if (form.startDate && form.endDate && form.endDate < form.startDate) {
+    toast.error('End date cannot be earlier than start date');
+    return;
+  }
     setSaving(true);
     try {
       await api.post('/projects', form);
