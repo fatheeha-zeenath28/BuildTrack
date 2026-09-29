@@ -135,8 +135,11 @@ export default function Projects() {
   };
 
   const filtered = projects
-    .filter(p => filter === 'all' || p.status === filter)
-    .filter(p => p.title.toLowerCase().includes(search.toLowerCase()));
+  .filter(p => filter === 'all' || p.status === filter)
+  .filter(p =>
+    p.title.toLowerCase().includes(search.toLowerCase()) ||
+    p.location?.toLowerCase().includes(search.toLowerCase())
+  );
 
   if (loading) return <div className="loading-center"><div className="spinner"/></div>;
 
