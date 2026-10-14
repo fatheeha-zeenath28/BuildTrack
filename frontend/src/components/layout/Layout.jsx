@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -14,6 +15,7 @@ const NAV = [
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -26,7 +28,26 @@ export default function Layout() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {/* Mobile-only top bar: hidden on desktop via CSS, gives phones/tablets
+          a way to open the sidebar nav that @media(max-width:768px) hides. */}
+      <div className="mobile-topbar">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileNavOpen(o => !o)}
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileNavOpen}
+        >
+          ☰
+        </button>
+        <span className="mobile-topbar-title">Build<span style={{color:'var(--primary)'}}>Track</span></span>
+      </div>
+
+      {/* Tapping outside the open mobile nav closes it again */}
+      {mobileNavOpen && (
+        <div className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} />
+      )}
+
+      <aside className={`sidebar${mobileNavOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <h1>Build<span>Track</span></h1>
           <p style={{color:'rgba(255,255,255,.4)', fontSize:'.75rem', marginTop:4}}>Construction Monitoring</p>
@@ -35,6 +56,7 @@ export default function Layout() {
           <div className="nav-section">Menu</div>
           {links.map(n => (
             <NavLink key={n.to} to={n.to}
+              onClick={() => setMobileNavOpen(false)}
               className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
               <span className="nav-icon">{n.icon}</span>
               {n.label}

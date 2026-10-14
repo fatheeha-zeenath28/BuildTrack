@@ -45,7 +45,7 @@ export default function Register() {
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" required placeholder="Min. 6 characters"
+            <input className="form-input" type="password" required minLength={6} placeholder="Min. 6 characters"
               value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
           </div>
           <p style={{fontSize:'.8rem', color:'var(--muted)', margin:'-4px 0 8px'}}>

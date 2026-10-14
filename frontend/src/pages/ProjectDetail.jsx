@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { fileUrl } from '../config';
 import { useAuth } from '../context/AuthContext';
+import ProjectFormModal from '../components/ProjectFormModal';
 import toast from 'react-hot-toast';
 
 function StatusBadge({ s }) {
@@ -21,32 +22,49 @@ export default function ProjectDetail() {
   const [tab, setTab]         = useState('overview');
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [users, setUsers]     = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const load = async () => {
     try {
-      const [pRes, tRes, rRes, phRes] = await Promise.all([
+      const [pRes, tRes, rRes, phRes, uRes] = await Promise.all([
         api.get(`/projects/${id}`),
         api.get(`/tasks?project=${id}`),
         api.get(`/reports?project=${id}`),
         api.get(`/photos?project=${id}`),
+        // The engineer/client assignment fields in the edit form need the
+        // full user list, which is admin-only server-side — non-admins
+        // just skip this call rather than get a 403.
+        user.role === 'admin' ? api.get('/users') : Promise.resolve({ data: { users: [] } }),
       ]);
       setProject(pRes.data.project);
       setProgress(pRes.data.project.progress);
       setTasks(tRes.data.tasks);
       setReports(rRes.data.reports);
       setPhotos(phRes.data.photos);
+      setUsers(uRes.data.users);
     } catch { navigate('/projects'); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [id]);
 
+  // Pulls out the server's actual validation message(s) when there are any
+  // (GlobalExceptionHandler / middleware/validate.js both return
+  // { message, errors: [...] } on a 400), falling back to a generic
+  // message only when the server didn't give one.
+  const describeError = (err, fallback) => {
+    const data = err.response?.data;
+    if (data?.errors?.length) return data.errors.join(' · ');
+    return data?.message || fallback;
+  };
+
   const updateProgress = async () => {
     try {
       await api.put(`/projects/${id}`, { progress });
       toast.success('Progress updated!');
       load();
-    } catch { toast.error('Failed to update'); }
+    } catch (err) { toast.error(describeError(err, 'Failed to update progress')); }
   };
 
   const addTask = async e => {
@@ -57,7 +75,7 @@ export default function ProjectDetail() {
       toast.success('Task added');
       e.target.reset();
       load();
-    } catch { toast.error('Failed'); }
+    } catch (err) { toast.error(describeError(err, 'Failed to add task')); }
   };
 
   const addReport = async e => {
@@ -68,7 +86,7 @@ export default function ProjectDetail() {
       toast.success('Report added');
       e.target.reset();
       load();
-    } catch { toast.error('Failed'); }
+    } catch (err) { toast.error(describeError(err, 'Failed to add report')); }
   };
 
   const uploadPhoto = async e => {
@@ -80,21 +98,40 @@ export default function ProjectDetail() {
       toast.success('Photo uploaded');
       e.target.reset();
       load();
-    } catch { toast.error('Upload failed'); }
+    } catch (err) { toast.error(describeError(err, 'Upload failed — check the file is an image under 5MB')); }
   };
 
   const deleteTask = async tid => {
     if (!confirm('Delete task?')) return;
-    await api.delete(`/tasks/${tid}`);
-    toast.success('Task deleted');
-    load();
+    try {
+      await api.delete(`/tasks/${tid}`);
+      toast.success('Task deleted');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete task');
+    }
   };
 
   const deleteReport = async rid => {
     if (!confirm('Delete report?')) return;
-    await api.delete(`/reports/${rid}`);
-    toast.success('Report deleted');
-    load();
+    try {
+      await api.delete(`/reports/${rid}`);
+      toast.success('Report deleted');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete report');
+    }
+  };
+
+  const deletePhoto = async pid => {
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await api.delete(`/photos/${pid}`);
+      toast.success('Photo deleted');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete photo');
+    }
   };
 
   if (loading) return <div className="loading-center"><div className="spinner"/></div>;
@@ -110,7 +147,14 @@ export default function ProjectDetail() {
           <div className="page-title">{project.title}</div>
           <div className="page-sub">📍 {project.location || 'No location set'}</div>
         </div>
-        <StatusBadge s={project.status}/>
+        <div className="flex items-center gap-3">
+          <StatusBadge s={project.status}/>
+          {canEdit && (
+            <button className="btn btn-sm btn-secondary" onClick={() => setShowEditModal(true)}>
+              ✏️ Edit Project
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -285,7 +329,7 @@ export default function ProjectDetail() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Workers on Site</label>
-                    <input className="form-input" type="number" name="workers" placeholder="0" style={{maxWidth:120}}/>
+                    <input className="form-input" type="number" name="workers" min="0" placeholder="0" style={{maxWidth:120}}/>
                   </div>
                   <button type="submit" className="btn btn-primary btn-sm">Submit Report</button>
                 </form>
@@ -355,7 +399,13 @@ export default function ProjectDetail() {
                   <div key={p._id} className="card" style={{overflow:'hidden'}}>
                     <img src={fileUrl(p.url)} alt={p.caption} style={{width:'100%', height:180, objectFit:'cover'}}/>
                     <div style={{padding:'12px 16px'}}>
-                      <div style={{fontWeight:600, fontSize:'.875rem'}}>{p.caption || 'No caption'}</div>
+                      <div className="flex items-center justify-between">
+                        <div style={{fontWeight:600, fontSize:'.875rem'}}>{p.caption || 'No caption'}</div>
+                        {(user.role === 'admin' || user.role === 'engineer') && (
+                          <button className="btn-icon" title="Delete photo" style={{color:'var(--danger)'}}
+                            onClick={() => deletePhoto(p._id)}>🗑️</button>
+                        )}
+                      </div>
                       <div style={{fontSize:'.75rem', color:'var(--muted)', marginTop:4}}>
                         <span className="badge badge-info">{p.category}</span>
                         <span style={{marginLeft:8}}>By {p.uploadedBy?.name}</span>
@@ -366,6 +416,16 @@ export default function ProjectDetail() {
               </div>
           }
         </div>
+      )}
+
+      {showEditModal && (
+        <ProjectFormModal
+          project={project}
+          users={users}
+          canAssignUsers={user.role === 'admin'}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => { setShowEditModal(false); load(); }}
+        />
       )}
     </div>
   );

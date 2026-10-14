@@ -7,7 +7,7 @@ below exist:
 
 ```bash
 cd backend
-node seed.js
+mvn spring-boot:run -Dspring-boot.run.arguments=--app.seed.enabled=true
 ```
 
 | Role     | Email                      | Password  |
@@ -56,6 +56,53 @@ what makes it good evidence, not just the screenshot alone.
 - [ ] **View photos** — `GET /api/photos` as client → `200`.
 - [ ] **Cannot access admin functions** — `GET /api/users`, `POST /api/projects`, `DELETE /api/projects/:id` as client → all `403`.
 - [ ] **Cannot self-promote** — attempt `PUT /api/users/:id` (even on their own account) as client → `403` (route-level `authorize('admin')` blocks it before the body is even read).
+
+## 5. Update — full edit flow & persistence
+
+The Projects page and the Project detail page both now have a full **Edit
+Project** form (title, description, location, status, dates, budget, and —
+for admins — engineer/client assignment), not just the progress slider.
+
+- [ ] **Edit from the list** — Projects page → pencil icon on a project card (admin only) → change the title and status → Save → card updates immediately.
+- [ ] **Edit from detail** — open a project → "✏️ Edit Project" button in the header → change the budget and end date → Save.
+- [ ] **Persistence across reload** — after either edit above, **refresh the browser (F5)** and confirm the changed values are still there (this proves the write actually reached MongoDB and isn't just local React state).
+- [ ] **Persistence via API** — `GET /api/projects/:id` directly (Postman/curl) after an edit and confirm the response reflects the new values.
+- [ ] **Progress slider** — still works independently (`ProjectDetail.jsx`'s "Overall Progress" card) — drag it, click Update, refresh, confirm it persisted.
+- [ ] **Task status update** — Tasks tab → change a task's status via `PUT /api/tasks/:id` → refresh → persisted.
+- [ ] **Engineer editing their own assigned project** — log in as the seeded engineer, open a project they're assigned to, edit it → `200`, saved (no engineer/client re-assignment fields shown to them, since `GET /api/users` is admin-only — see `canAssignUsers` in `ProjectFormModal.jsx`).
+- [ ] **Engineer editing a project they're NOT assigned to** — should fail with `403 You are not assigned to this project`, shown as a toast, not a silent failure or a generic error.
+
+## 6. Validation & error handling (client + server)
+
+- [ ] **Required field, client-side** — try to submit the Create/Edit Project form with an empty title → the browser blocks submission (HTML5 `required`) before any network call.
+- [ ] **Required field, server-side** — bypass the client (e.g. curl `POST /api/projects` with `{}`) → `400` with `{ "message": "Validation failed", "errors": ["title is required"] }`.
+- [ ] **Date range** — in the Edit/Create form, set an end date before the start date → client blocks it (red error summary in the modal) *and* if you bypass the client, the server also rejects it (`endDate cannot be before startDate`).
+- [ ] **Invalid enum value** — `PUT /api/projects/:id` with `"status": "bogus"` → `400`, lists the allowed values.
+- [ ] **Out-of-range number** — `PUT /api/projects/:id` with `"progress": 150` → `400` (`progress must be a number between 0 and 100`); try a negative `budget` too.
+- [ ] **Password length** — Register with a 3-character password → blocked client-side (`minLength=6`) and server-side (`400`) if bypassed.
+- [ ] **Readable errors in the UI, not just the console** — every form above shows the *actual* server message via toast or the modal's error list (see `describeError()` in `ProjectDetail.jsx` and the `errors` state in `ProjectFormModal.jsx`) — open devtools Network tab once to confirm the UI text matches the response body, not a generic "Something went wrong".
+- [ ] **Failed deletes surface a reason** — try deleting a project as a non-admin (should be blocked by the UI, but also try the raw API call) → `403` with a message, and confirm the UI's delete button shows that message via toast rather than failing silently.
+
+## 7. Database design — relationship integrity
+
+Cross-reference with [docs/ERD.md](./docs/ERD.md) while doing this section.
+
+- [ ] **Project ↔ User (admin)** — create a project as admin A; confirm `project.admin` in the API response is admin A's id, and the UI shows the right admin-created project list.
+- [ ] **Project ↔ User (engineers/clients, many-to-many)** — assign the same engineer to two different projects; confirm `GET /api/projects` as that engineer returns both (the `engineers` array is doing its job as a many-to-many link).
+- [ ] **Project → Task (one-to-many)** — add two tasks to the same project; `GET /api/tasks?project=<id>` returns both, each with `task.project.title` populated (confirms the reference, not just a raw id).
+- [ ] **Project → Report (one-to-many)** — same check with `GET /api/reports?project=<id>`.
+- [ ] **Project → Photo (one-to-many)** — same check with `GET /api/photos?project=<id>`; confirm `photo.project.title` is populated (this was the exact bug fixed earlier in the Node version, and the equivalent is `PhotoService.populate()` here).
+- [ ] **Report → Issue (embedded)** — add an issue to a report (if your UI/Postman call includes `issues`) and confirm it comes back nested inside that report, not as a separate top-level entity — it has no independent id.
+- [ ] **Referential consistency after delete** — delete a task's project; confirm what happens to the orphaned task reference (note this as a known limitation if nothing cascades — MongoDB doesn't enforce FK constraints, so this is a good thing to mention in your report's "limitations" section if you haven't added cascading deletes).
+
+## 8. UI/UX & responsiveness
+
+- [ ] **Resize to mobile width** (DevTools → toggle device toolbar, or an actual phone) — at ≤768px, the sidebar should hide and a ☰ button appears in a top bar.
+- [ ] **Mobile nav toggle** — tap ☰ → sidebar slides in over a dark backdrop; tap the backdrop (or a nav link) → it closes again.
+- [ ] **Forms at mobile width** — open the Create/Edit Project modal at a narrow width → two-column rows (e.g. Start/End date) stack into one column (`form-row` → `1fr` under the `@media (max-width:768px)` rule).
+- [ ] **Tables at mobile width** — Tasks table on a project's Tasks tab → doesn't overflow the viewport; it scrolls horizontally within its own `.table-wrap` container instead of breaking the page layout.
+- [ ] **Tap targets** — buttons and nav items are comfortably tappable (not too small/close together) at mobile width.
+- [ ] **Desktop unaffected** — confirm none of the above changed the desktop (>768px) layout.
 
 ---
 
