@@ -1,78 +1,143 @@
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
 import api from '../api';
 import toast from 'react-hot-toast';
 
-/**
- * Full Create/Edit Project form in one place, so both the Projects list
- * ("+ New Project") and the Project detail page ("✏️ Edit Project") open
- * the exact same, fully-featured form instead of only being able to tweak
- * the progress slider after creation.
- *
- * - `project` omitted/null  -> Create mode (POST /projects)
- * - `project` provided      -> Edit mode (PUT /projects/:id), fields pre-filled
- *
- * `users` is only passed in (and the engineer/client assignment fields only
- * shown) when the current user is an admin, because GET /api/users is
- * admin-only server-side — an engineer editing a project they're assigned
- * to can still update everything else (title, dates, budget, status...).
- */
-export default function ProjectFormModal({ project, onClose, onSaved, users = [], canAssignUsers = false }) {
+export default function ProjectFormModal({
+  project,
+  users = [],
+  canAssignUsers = false,
+  onClose,
+  onSaved,
+}) {
   const isEdit = Boolean(project);
+  const projectId = project?.id || project?._id;
 
   const [form, setForm] = useState({
-    title: project?.title || '',
-    description: project?.description || '',
-    location: project?.location || '',
-    status: project?.status || 'planning',
-    startDate: project?.startDate || '',
-    endDate: project?.endDate || '',
-    budget: project?.budget ?? '',
-    engineers: project?.engineers?.map(u => u._id) || [],
-    clients: project?.clients?.map(u => u._id) || [],
+    title: '',
+    description: '',
+    location: '',
+    status: 'planning',
+    startDate: '',
+    endDate: '',
+    budget: 0,
+    engineers: [],
+    clients: [],
   });
-  const [saving, setSaving] = useState(false);
+
   const [errors, setErrors] = useState([]);
+  const [saving, setSaving] = useState(false);
 
-  const engineers = users.filter(u => u.role === 'engineer');
-  const clients = users.filter(u => u.role === 'client');
+  useEffect(() => {
+    if (!project) return;
 
-  const save = async e => {
-    e.preventDefault();
-    setErrors([]);
+    setForm({
+      title: project.title || '',
+      description: project.description || '',
+      location: project.location || '',
+      status: project.status || 'planning',
+      startDate: project.startDate || '',
+      endDate: project.endDate || '',
+      budget: project.budget ?? 0,
+      engineers: (project.engineers || []).map((u) =>
+        typeof u === 'object' ? (u.id || u._id) : u
+      ),
+      clients: (project.clients || []).map((u) =>
+        typeof u === 'object' ? (u.id || u._id) : u
+      ),
+    });
+  }, [project]);
 
-    // A couple of checks mirrored client-side from the server's validation
-    // (middleware/validate.js on the Node version, *Service on the Spring
-    // Boot version) so the person gets instant feedback instead of a
-    // round-trip just to find out the end date is before the start date.
-    const clientErrors = [];
-    if (!form.title.trim()) clientErrors.push('Project title is required');
-    if (form.startDate && form.endDate && form.endDate < form.startDate) {
-      clientErrors.push('End date cannot be before start date');
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const handleSelection = (e) => {
+    const { name, options } = e.target;
+    const selected = Array.from(options)
+      .filter((option) => option.selected)
+      .map((option) => option.value);
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: selected,
+    }));
+  };
+
+  const validate = () => {
+    const messages = [];
+
+    if (!form.title.trim()) {
+      messages.push('Project title is required.');
     }
+
+    if (
+      form.startDate &&
+      form.endDate &&
+      form.endDate < form.startDate
+    ) {
+      messages.push('End date cannot be before the start date.');
+    }
+
     if (form.budget !== '' && Number(form.budget) < 0) {
-      clientErrors.push('Budget cannot be negative');
+      messages.push('Budget cannot be negative.');
     }
-    if (clientErrors.length) {
-      setErrors(clientErrors);
-      return;
+
+    if (isEdit && !projectId) {
+      messages.push(
+        'Project ID is missing. Close the form and reopen the project.'
+      );
     }
+
+    setErrors(messages);
+    return messages.length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!validate()) return;
 
     setSaving(true);
+
+    const payload = {
+      ...form,
+      title: form.title.trim(),
+      budget: Number(form.budget || 0),
+    };
+
     try {
       if (isEdit) {
-        await api.put(`/projects/${project._id}`, form);
-        toast.success('Project updated!');
+        await api.put(
+          `/projects/${encodeURIComponent(projectId)}`,
+          payload
+        );
+        toast.success('Project updated successfully');
       } else {
-        await api.post('/projects', form);
-        toast.success('Project created!');
+        await api.post('/projects', payload);
+        toast.success('Project created successfully');
       }
+
       onSaved();
     } catch (err) {
       const data = err.response?.data;
-      if (data?.errors?.length) {
+
+      if (Array.isArray(data?.errors)) {
         setErrors(data.errors);
       } else {
-        toast.error(data?.message || (isEdit ? 'Failed to update project' : 'Failed to create project'));
+        const message =
+          data?.message ||
+          data?.error ||
+          (isEdit
+            ? 'Failed to update project'
+            : 'Failed to create project');
+
+        setErrors([message]);
+        toast.error(message);
       }
     } finally {
       setSaving(false);
@@ -80,93 +145,217 @@ export default function ProjectFormModal({ project, onClose, onSaved, users = []
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <span className="modal-title">{isEdit ? 'Edit Project' : 'New Project'}</span>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h2 className="modal-title">
+            {isEdit ? 'Edit Project' : 'New Project'}
+          </h2>
+
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
+
         <div className="modal-body">
-          {errors.length > 0 && (
-            <div className="alert alert-danger mb-4" role="alert">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {errors.map((msg, i) => <li key={i}>{msg}</li>)}
-              </ul>
-            </div>
-          )}
-          <form onSubmit={save}>
+          <form onSubmit={handleSubmit}>
+            {errors.length > 0 && (
+              <div className="alert alert-danger mb-4">
+                {errors.map((error, index) => (
+                  <div key={`${error}-${index}`}>• {error}</div>
+                ))}
+              </div>
+            )}
+
             <div className="form-group">
-              <label className="form-label">Project Title *</label>
-              <input className="form-input" required value={form.title}
-                onChange={e => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g. Highway Bridge Project" />
+              <label className="form-label" htmlFor="title">
+                Project Title *
+              </label>
+              <input
+                className="form-input"
+                id="title"
+                name="title"
+                value={form.title}
+                onChange={handleChange}
+                required
+              />
             </div>
+
             <div className="form-group">
-              <label className="form-label">Description</label>
-              <textarea className="form-textarea" value={form.description}
-                onChange={e => setForm({ ...form, description: e.target.value })}
-                placeholder="Project overview…" />
+              <label className="form-label" htmlFor="description">
+                Description
+              </label>
+              <textarea
+                className="form-textarea"
+                id="description"
+                name="description"
+                value={form.description}
+                onChange={handleChange}
+                rows={4}
+              />
             </div>
+
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Location</label>
-                <input className="form-input" value={form.location}
-                  onChange={e => setForm({ ...form, location: e.target.value })}
-                  placeholder="City, Country" />
+                <label className="form-label" htmlFor="location">
+                  Location
+                </label>
+                <input
+                  className="form-input"
+                  id="location"
+                  name="location"
+                  value={form.location}
+                  onChange={handleChange}
+                />
               </div>
+
               <div className="form-group">
-                <label className="form-label">Status</label>
-                <select className="form-select" value={form.status}
-                  onChange={e => setForm({ ...form, status: e.target.value })}>
+                <label className="form-label" htmlFor="status">
+                  Status
+                </label>
+                <select
+                  className="form-select"
+                  id="status"
+                  name="status"
+                  value={form.status}
+                  onChange={handleChange}
+                >
                   <option value="planning">Planning</option>
                   <option value="active">Active</option>
-                  <option value="on_hold">On Hold</option>
+                  <option value="on_hold">On hold</option>
                   <option value="completed">Completed</option>
                 </select>
               </div>
             </div>
+
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Start Date</label>
-                <input className="form-input" type="date" value={form.startDate || ''}
-                  onChange={e => setForm({ ...form, startDate: e.target.value })} />
+                <label className="form-label" htmlFor="startDate">
+                  Start Date
+                </label>
+                <input
+                  className="form-input"
+                  id="startDate"
+                  type="date"
+                  name="startDate"
+                  value={form.startDate}
+                  onChange={handleChange}
+                />
               </div>
+
               <div className="form-group">
-                <label className="form-label">End Date</label>
-                <input className="form-input" type="date" value={form.endDate || ''}
-                  min={form.startDate || undefined}
-                  onChange={e => setForm({ ...form, endDate: e.target.value })} />
+                <label className="form-label" htmlFor="endDate">
+                  End Date
+                </label>
+                <input
+                  className="form-input"
+                  id="endDate"
+                  type="date"
+                  name="endDate"
+                  value={form.endDate}
+                  onChange={handleChange}
+                />
               </div>
             </div>
+
             <div className="form-group">
-              <label className="form-label">Budget ($)</label>
-              <input className="form-input" type="number" min="0" step="0.01" value={form.budget}
-                onChange={e => setForm({ ...form, budget: e.target.value })} placeholder="0" />
+              <label className="form-label" htmlFor="budget">
+                Budget
+              </label>
+              <input
+                className="form-input"
+                id="budget"
+                type="number"
+                name="budget"
+                min="0"
+                step="any"
+                value={form.budget}
+                onChange={handleChange}
+              />
             </div>
 
             {canAssignUsers && (
-              <div className="form-row">
+              <>
                 <div className="form-group">
-                  <label className="form-label">Assign Engineers</label>
-                  <select className="form-select" multiple value={form.engineers}
-                    onChange={e => setForm({ ...form, engineers: [...e.target.selectedOptions].map(o => o.value) })}>
-                    {engineers.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+                  <label className="form-label" htmlFor="engineers">
+                    Engineers
+                  </label>
+                  <select
+                    className="form-select"
+                    id="engineers"
+                    name="engineers"
+                    multiple
+                    value={form.engineers}
+                    onChange={handleSelection}
+                  >
+                    {users
+                      .filter((u) => u.role === 'engineer')
+                      .map((u) => (
+                        <option
+                          key={u.id || u._id}
+                          value={u.id || u._id}
+                        >
+                          {u.name || u.email}
+                        </option>
+                      ))}
                   </select>
                 </div>
+
                 <div className="form-group">
-                  <label className="form-label">Assign Clients</label>
-                  <select className="form-select" multiple value={form.clients}
-                    onChange={e => setForm({ ...form, clients: [...e.target.selectedOptions].map(o => o.value) })}>
-                    {clients.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+                  <label className="form-label" htmlFor="clients">
+                    Clients
+                  </label>
+                  <select
+                    className="form-select"
+                    id="clients"
+                    name="clients"
+                    multiple
+                    value={form.clients}
+                    onChange={handleSelection}
+                  >
+                    {users
+                      .filter((u) => u.role === 'client')
+                      .map((u) => (
+                        <option
+                          key={u.id || u._id}
+                          value={u.id || u._id}
+                        >
+                          {u.name || u.email}
+                        </option>
+                      ))}
                   </select>
                 </div>
-              </div>
+              </>
             )}
 
-            <div className="flex gap-2 mt-4" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Project')}
+            <div className="flex justify-between gap-2">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving
+                  ? 'Saving...'
+                  : isEdit
+                    ? 'Save Changes'
+                    : 'Create Project'}
               </button>
             </div>
           </form>
@@ -175,3 +364,4 @@ export default function ProjectFormModal({ project, onClose, onSaved, users = []
     </div>
   );
 }
+
