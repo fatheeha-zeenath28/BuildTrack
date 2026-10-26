@@ -288,12 +288,12 @@ export default function ProjectDetail() {
                       <thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Due Date</th>{canEdit&&<th></th>}</tr></thead>
                       <tbody>
                         {tasks.map(t => (
-                          <tr key={t._id}>
+                          <tr key={t.id}>
                             <td><div style={{fontWeight:600}}>{t.title}</div><div style={{fontSize:'.75rem',color:'var(--muted)'}}>{t.description}</div></td>
                             <td><PriorityBadge p={t.priority}/></td>
                             <td><StatusBadge s={t.status}/></td>
                             <td style={{fontSize:'.8rem',color:'var(--muted)'}}>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}</td>
-                            {canEdit && <td><button className="btn-icon" onClick={() => deleteTask(t._id)}>🗑️</button></td>}
+                            {canEdit && <td><button className="btn-icon" onClick={() => deleteTask(t.id)}>🗑️</button></td>}
                           </tr>
                         ))}
                       </tbody>
@@ -349,7 +349,7 @@ export default function ProjectDetail() {
                       {r.workers > 0 && ` · 👷 ${r.workers} workers`}
                     </div>
                   </div>
-                  {user.role === 'admin' && <button className="btn-icon" onClick={() => deleteReport(r._id)}>🗑️</button>}
+                  {user.role === 'admin' && <button className="btn-icon" onClick={() => deleteReport(r.id ?? r._id)}>🗑️</button>}
                 </div>
                 <div className="card-body" style={{paddingTop:12}}>
                   <p style={{fontSize:'.875rem', color:'var(--text)', lineHeight:1.7}}>{r.content}</p>
