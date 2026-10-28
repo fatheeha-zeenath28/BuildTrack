@@ -53,6 +53,7 @@ export default function Projects() {
       setProjects(pRes.data.projects || []);
       setUsers(uRes.data.users || []);
     } catch (e) {
+      console.error(e);
       toast.error('Failed to load projects');
     } finally {
       setLoading(false);
@@ -71,9 +72,7 @@ export default function Projects() {
       return;
     }
 
-    if (!confirm('Delete this project? This cannot be undone.')) {
-      return;
-    }
+    if (!confirm('Delete this project? This cannot be undone.')) return;
 
     try {
       await api.delete(`/projects/${encodeURIComponent(id)}`);
@@ -129,188 +128,194 @@ export default function Projects() {
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">Projects</div>
-          <div className="page-sub">{projects.length} total projects</div>
+    <div className="projects-background">
+      <div className="projects-content">
+        <div className="page-header">
+          <div>
+            <div className="page-title">Projects</div>
+            <div className="page-sub">
+              {projects.length} total projects
+            </div>
+          </div>
+
+          {user.role === 'admin' && (
+            <button
+              className="btn btn-primary"
+              onClick={() => setModalProject(null)}
+            >
+              + New Project
+            </button>
+          )}
         </div>
 
-        {user.role === 'admin' && (
-          <button
-            className="btn btn-primary"
-            onClick={() => setModalProject(null)}
-          >
-            + New Project
-          </button>
-        )}
-      </div>
-
-      <div
-        className="flex gap-3 mb-4"
-        style={{ flexWrap: 'wrap', alignItems: 'center' }}
-      >
-        <input
-          className="form-input"
-          style={{ maxWidth: 280 }}
-          placeholder="🔍 Search by title or location…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
-        <select
-          className="form-select"
-          style={{ maxWidth: 220 }}
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          aria-label="Sort projects"
+        <div
+          className="flex gap-3 mb-4"
+          style={{ flexWrap: 'wrap', alignItems: 'center' }}
         >
-          {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              Sort: {o.label}
-            </option>
-          ))}
-        </select>
+          <input
+            className="form-input"
+            style={{ maxWidth: 280 }}
+            placeholder="🔍 Search by title or location…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
 
-        {['all', 'planning', 'active', 'on_hold', 'completed'].map((s) => (
-          <button
-            key={s}
-            className={`btn btn-sm ${
-              filter === s ? 'btn-primary' : 'btn-secondary'
-            }`}
-            onClick={() => setFilter(s)}
+          <select
+            className="form-select"
+            style={{ maxWidth: 220 }}
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            aria-label="Sort projects"
           >
-            {s.replace('_', ' ')}
-          </button>
-        ))}
-      </div>
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                Sort: {o.label}
+              </option>
+            ))}
+          </select>
 
-      {visible.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">🏗️</div>
-          <p>No projects found.</p>
+          {['all', 'planning', 'active', 'on_hold', 'completed'].map((s) => (
+            <button
+              key={s}
+              className={`btn btn-sm ${
+                filter === s ? 'btn-primary' : 'btn-secondary'
+              }`}
+              onClick={() => setFilter(s)}
+            >
+              {s.replace('_', ' ')}
+            </button>
+          ))}
         </div>
-      ) : (
-        <div className="grid-3">
-          {visible.map((p) => {
-            const projectId = p.id ?? p._id;
 
-            return (
-              <div
-                key={projectId ?? p.title}
-                className="project-card"
-                onClick={() => {
-                  if (projectId) navigate(`/projects/${projectId}`);
-                }}
-              >
+        {visible.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🏗️</div>
+            <p>No projects found.</p>
+          </div>
+        ) : (
+          <div className="grid-3">
+            {visible.map((p) => {
+              const projectId = p.id ?? p._id;
+
+              return (
                 <div
-                  className="flex items-center justify-between"
-                  style={{ marginBottom: 8 }}
+                  key={projectId ?? p.title}
+                  className="project-card"
+                  onClick={() => {
+                    if (projectId) navigate(`/projects/${projectId}`);
+                  }}
                 >
-                  <StatusBadge s={p.status} />
-
-                  {user.role === 'admin' && (
-                    <div className="flex gap-2">
-                      <button
-                        className="btn-icon"
-                        title="Edit project"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setModalProject(p);
-                        }}
-                      >
-                        ✏️
-                      </button>
-
-                      <button
-                        className="btn-icon"
-                        title="Delete project"
-                        style={{ color: 'var(--danger)' }}
-                        onClick={(e) => del(projectId, e)}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="project-title">{p.title}</div>
-
-                <div className="project-meta">
-                  {p.location && (
-                    <span className="text-sm text-muted">
-                      📍 {p.location}
-                    </span>
-                  )}
-
-                  {p.endDate && (
-                    <span className="text-sm text-muted">
-                      📅 {new Date(p.endDate).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ marginBottom: 8 }}>
                   <div
                     className="flex items-center justify-between"
-                    style={{ marginBottom: 6 }}
+                    style={{ marginBottom: 8 }}
                   >
-                    <span style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
-                      Progress
-                    </span>
-                    <span style={{ fontSize: '.8rem', fontWeight: 700 }}>
-                      {p.progress ?? 0}%
-                    </span>
+                    <StatusBadge s={p.status} />
+
+                    {user.role === 'admin' && (
+                      <div className="flex gap-2">
+                        <button
+                          className="btn-icon"
+                          title="Edit project"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setModalProject(p);
+                          }}
+                        >
+                          ✏️
+                        </button>
+
+                        <button
+                          className="btn-icon"
+                          title="Delete project"
+                          style={{ color: 'var(--danger)' }}
+                          onClick={(e) => del(projectId, e)}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{ width: `${p.progress ?? 0}%` }}
-                    />
-                  </div>
-                </div>
+                  <div className="project-title">{p.title}</div>
 
-                <div className="flex gap-2" style={{ marginTop: 12 }}>
-                  {p.engineers?.slice(0, 3).map((engineer) => (
+                  <div className="project-meta">
+                    {p.location && (
+                      <span className="text-sm text-muted">
+                        📍 {p.location}
+                      </span>
+                    )}
+
+                    {p.endDate && (
+                      <span className="text-sm text-muted">
+                        📅 {new Date(p.endDate).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
                     <div
-                      key={engineer.id ?? engineer._id ?? engineer.name}
-                      title={engineer.name}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: '50%',
-                        background: 'var(--primary)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '.7rem',
-                        fontWeight: 700,
-                      }}
+                      className="flex items-center justify-between"
+                      style={{ marginBottom: 6 }}
                     >
-                      {engineer.name?.[0]}
+                      <span
+                        style={{ fontSize: '.8rem', color: 'var(--muted)' }}
+                      >
+                        Progress
+                      </span>
+                      <span style={{ fontSize: '.8rem', fontWeight: 700 }}>
+                        {p.progress ?? 0}%
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {modalProject !== undefined && (
-        <ProjectFormModal
-          project={modalProject}
-          users={users}
-          canAssignUsers={user.role === 'admin'}
-          onClose={() => setModalProject(undefined)}
-          onSaved={() => {
-            setModalProject(undefined);
-            load();
-          }}
-        />
-      )}
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${p.progress ?? 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2" style={{ marginTop: 12 }}>
+                    {p.engineers?.slice(0, 3).map((engineer) => (
+                      <div
+                        key={engineer.id ?? engineer._id ?? engineer.name}
+                        title={engineer.name}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          background: 'var(--primary)',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '.7rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {engineer.name?.[0]}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {modalProject !== undefined && (
+          <ProjectFormModal
+            project={modalProject}
+            users={users}
+            canAssignUsers={user.role === 'admin'}
+            onClose={() => setModalProject(undefined)}
+            onSaved={() => {
+              setModalProject(undefined);
+              load();
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

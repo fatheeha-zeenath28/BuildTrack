@@ -140,7 +140,7 @@ export default function ProjectDetail() {
   const canEdit = user.role === 'admin' || user.role === 'engineer';
 
   return (
-    <div>
+    <div className="project-detail-premium">
       <div className="page-header">
         <div>
           <button className="btn btn-sm btn-secondary" onClick={() => navigate('/projects')} style={{marginBottom:8}}>← Back</button>
